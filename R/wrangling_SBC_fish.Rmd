@@ -3,6 +3,8 @@ title: 'Data Wrangling: Santa Barbara Coastal LTER Fish Data'
 author: "Julianna Renzi"
 date: "2025-06-18"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -24,4 +26,140 @@ librarian::shelf(here, # relative file paths
 
 # Bring in data
 
-Data downloaded from:
+Data downloaded from: https://portal.edirepository.org/nis/mapbrowse?packageid=knb-lter-sbc.50.17 on June 18, 2025. The dataset was published on 9/13/2024.
+
+```{r load data}
+# raw data from EDI
+sbc_fish_1 <- read_csv(here("data_raw", "Annual_All_Species_Biomass_at_transect_20240823.csv"))
+
+# taxa table where I cleaned up fish taxonomy and taxonomic resolution
+sbc_taxa <- read_csv(here("taxa_tables", "sbc_taxa_annotated.csv"))
+```
+
+**Some considerations wrt these data:**
+- These data are from permanent transects at 11 sites
+- BULL, CARP, NAPL started in 2000, others in 2001
+- Two Santa Cruz sites began in summer 2004
+- 2-8 transects/site; some transects added later
+- Transect = 40 m x 2 m fixed plot
+- Transects 3, 5, 6, 7, 8 at IVEE were added in 2011
+- Transects are surveyed annually in the summer
+- -99999 means the value was not recorded or not available 
+- Reef fish are those 2 m from the benthos
+- IMPORTANT: the accuracy of sampling fish may vary with water clarity and *data collected during sampling events when horizontal visibility was < 2 m should be used with caution* (although some groups leave these in--we can decide what meets our needs best)
+
+# Account for zeros
+
+Want to just get fish, but want to make sure we have zeros for where no fish were observed. Get a full transect/site/year list:
+
+```{r}
+sbc_fish_1 %>% 
+  group_by(YEAR, MONTH, DATE, SITE, TRANSECT) %>% 
+  summarize(n = n()) %>% 
+  select(-n) -> transect_list
+```
+
+See if there are any transects without fish:
+
+```{r}
+sbc_fish_1 %>% 
+  filter(COARSE_GROUPING == "FISH") %>% 
+  group_by(YEAR, MONTH, DATE, SITE, TRANSECT) %>% 
+  summarize(n = n()) -> fish_transect_list
+```
+
+Are they the same length?
+
+```{r}
+dim(transect_list)[1] == dim(fish_transect_list)[1]
+```
+
+Yes! All transects had at least 1 fish on them
+
+# Biomass cleaning
+
+We'll need biomass for getting fish community stability, which means we can only use fishes with biomass estimates. How many observations don't have biomass estimates?
+
+Note:
+- **WM_GM2** = Areal wet mass of individuals or colony, including chitonous or calcareous structures (g/m2)
+- **DRY_GM2** = Dry mass density derived from estimates of density or percent cover and laboratory estimates of taxa dry mass (g/m^2)
+
+```{r}
+sbc_fish_1 %>% 
+  filter(COARSE_GROUPING == "FISH") %>% 
+  filter(DRY_GM2 < 0) %>% dim() # 580 rows have NAs for dry mass
+
+sbc_fish_1 %>% 
+  filter(COARSE_GROUPING == "FISH") %>% 
+  filter(WM_GM2 < 0) %>% dim() # 580 rows have NAs for wet mass
+```
+
+See that all NA's are from 2004 and 2005. Perhaps then we start in 2006?
+
+```{r filter out years before 2006}
+sbc_fish_1 %>% 
+  filter(COARSE_GROUPING == "FISH") %>% 
+  filter(YEAR > 2005) -> sbc_fish_2
+```
+
+# Taxonomy cleaning
+
+Can see that there are no unidentifiable fish taxa:
+
+```{r}
+sbc_fish_2 %>% 
+  left_join(sbc_taxa) %>% 
+  filter(id_confidence == 0) %>% dim()
+```
+
+# Temporal coverage
+
+```{r}
+sbc_fish_2 %>% 
+  group_by(YEAR, SITE, TRANSECT) %>% 
+  # arbitrary summary thing here to get 1 value per entry
+  summarize(total = sum(WM_GM2)) %>% 
+  group_by(YEAR, SITE) %>% 
+  summarize(n_transects = n()) %>% 
+  pivot_wider(names_from = SITE,
+              values_from = n_transects
+              ) -> transect_reps
+```
+
+Can see IVEE is the only one that has irregular transect numbers
+
+# Format
+
+Make a nicer format for the working group
+
+```{r}
+sbc_fish_2 %>% 
+  mutate(
+    dataset = "sbc",
+    site = str_to_lower(SITE),
+    transect = TRANSECT,
+    year = YEAR,
+    month = MONTH,
+    plot = site,
+    day = day(as.Date(DATE)),
+    biomass_wet_g_per_m2 = WM_GM2,
+    biomass_dry_g_per_m2 = DRY_GM2,
+    taxon_name = SCIENTIFIC_NAME, 
+    common_name = COMMON_NAME
+  ) %>% 
+  select(dataset, site, transect, year, month, day, plot, taxon_name, common_name, biomass_wet_g_per_m2, biomass_dry_g_per_m2) -> sbc_fish_3
+```
+
+Check for NA's
+
+```{r}
+unique(is.na(sbc_fish_3))
+```
+
+Looks good.
+
+# Write CSV
+
+```{r}
+write_csv(sbc_fish_3, here("data_cleaned", "sbc_fish_biomass.csv"))
+```
