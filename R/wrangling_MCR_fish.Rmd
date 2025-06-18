@@ -183,15 +183,48 @@ See that all 6 sites were done in completion each year with no gaps
 
 # Adjust for swaths
 
-```{r}
+```{r get in terms of the 5 x 50 m transect}
 mcr_fish_4 %>% 
-  # get biomass for 5 m swath
+  # get biomass for 5 m swath (can divide by 250 if want per m^2)
   mutate(biomass_g_per_5x50_m2 = case_when(Swath == 1 ~ Biomass*5, 
                                            Swath == 5 ~ Biomass,
-                                           TRUE ~ -9999))
+                                           TRUE ~ -9999)) -> mcr_fish_5
 ```
-
 
 # Format
 
 Make a nicer format for the working group
+
+```{r}
+mcr_fish_5 %>% 
+  mutate(
+    dataset = "mcr",
+    site = str_to_lower(Site),
+    transect = Transect,
+    swath = Swath,
+    habitat = str_to_lower(Habitat),
+    year = Year,
+    month = month(as.Date(Date)),
+    day = day(as.Date(Date)),
+    plot = paste0(site, "_", habitat), 
+    subplot = paste0(Transect, "_", Swath, "m"),
+    biomass_g_per_5x50_m2 = biomass_g_per_5x50_m2,
+    taxon_name = Taxonomy
+  ) %>% 
+  select(dataset, site, transect, swath, habitat, year, month, day, plot, subplot, taxon_name, biomass_g_per_5x50_m2) -> mcr_fish_6
+```
+
+Check for NA's
+
+```{r}
+unique(is.na(mcr_fish_6))
+```
+
+Looks good.
+
+# Write CSV
+
+```{r}
+write_csv(mcr_fish_6, here("data_cleaned", "mcr_fish_biomass_5x50m2.csv"))
+```
+
