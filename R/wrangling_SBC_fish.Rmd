@@ -1,0 +1,27 @@
+---
+title: 'Data Wrangling: Santa Barbara Coastal LTER Fish Data'
+author: "Julianna Renzi"
+date: "2025-06-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+# Clear environment for maximum reproducibility
+rm(list=ls())
+
+# load librarian (package for installing/loading packages)
+if (!require("librarian")) install.packages("librarian")
+
+# Load other necessary libraries
+librarian::shelf(here, # relative file paths
+                 tidyverse # data wrangling
+)
+```
+
+# Bring in data
+
+Data downloaded from:
