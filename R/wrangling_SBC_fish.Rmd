@@ -138,6 +138,7 @@ sbc_fish_2 %>%
     dataset = "sbc",
     site = str_to_lower(SITE),
     transect = TRANSECT,
+    visibility_m = VIS, # VIS = Approximate horizontal visibility at the beginning of the tansect (in meters)
     year = YEAR,
     month = MONTH,
     plot = site,
@@ -147,7 +148,7 @@ sbc_fish_2 %>%
     taxon_name = SCIENTIFIC_NAME, 
     common_name = COMMON_NAME
   ) %>% 
-  select(dataset, site, transect, year, month, day, plot, taxon_name, common_name, biomass_wet_g_per_m2, biomass_dry_g_per_m2) -> sbc_fish_3
+  select(dataset, site, transect, visibility_m, year, month, day, plot, taxon_name, common_name, biomass_wet_g_per_m2, biomass_dry_g_per_m2) -> sbc_fish_3
 ```
 
 Check for NA's
