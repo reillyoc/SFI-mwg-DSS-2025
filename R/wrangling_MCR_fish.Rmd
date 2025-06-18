@@ -1,0 +1,197 @@
+---
+title: 'Data Wrangling: Moorea Coral Reef LTER Fish Data'
+author: "Julianna Renzi"
+date: "2025-06-18"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+# Clear environment for maximum reproducibility
+rm(list=ls())
+
+# load librarian (package for installing/loading packages)
+if (!require("librarian")) install.packages("librarian")
+
+# Load other necessary libraries
+librarian::shelf(here, # relative file paths
+                 tidyverse # data wrangling
+)
+```
+
+# Bring in data
+
+Data downloaded from: https://portal.edirepository.org/nis/mapbrowse?scope=knb-lter-mcr&identifier=6&revision=64 on June 18, 2025 from "Annual Fish Surveys" (published on April 11, 2025)
+
+```{r load data}
+# raw fish counts
+mcr_fish_1 <- read_csv(here("data_raw", "MCR_LTER_Annual_Fish_Survey_20250324.csv")) 
+
+# taxa table where I cleaned up fish taxonomy and taxonomic resolution
+mcr_taxa <- read_csv(here("taxa_tables", "mcr_fish_taxa_annotated.csv"))
+```
+
+**Some considerations wrt these data:**
+- Biomass NA value is -1
+- Biomass is reported in grams
+- Will need to merge the two swaths (5 m and 1 m) to get total biomass estimates (both x 50 m)
+- Will need to make decisions about spp not identified to the spp level
+- "no fish observed" is an option
+- Might want to remove sharks and very large transient fish, given Segrestin et al. 2024
+
+# Account for zeros
+
+How many instances are there of no fish observed?
+
+```{r}
+mcr_fish_1 %>% 
+  filter(Taxonomy == "No fish observed") %>% dim() # two
+```
+
+Make "no fish observed" zeros with actual fish name (assign it to the first fish alphabetically)
+
+```{r}
+mcr_fish_1 %>% 
+  mutate(Count = case_when(Taxonomy == "No fish observed" ~ 0,
+                           TRUE ~ Count),
+         Biomass = case_when(Taxonomy == "No fish observed" ~ 0,
+                             TRUE ~ Biomass),
+         Taxonomy = case_when(Taxonomy == "No fish observed" ~ "Abudefduf septemfasciatus",
+                              TRUE ~ Taxonomy)) -> mcr_fish_2
+```
+
+# Biomass cleaning
+
+We'll need biomass for getting fish community stability, which means we can only use fishes with biomass estimates.
+
+How many observations don't have biomass estimates?
+
+```{r}
+mcr_fish_2 %>% 
+  filter(Biomass == -1) %>% 
+  summarize(n_individuals = sum(Count),
+            n_rows = n()) 
+```
+
+See that there are 1,092 fish on 96 rows that don't have biomass estimates. The vast majority of these don't have length estimates (-1 for total length), although is "Teleostei unidentified" 
+
+```{r}
+mcr_fish_2 %>% 
+  summarize(n_individuals = sum(Count),
+            n_rows = n()) 
+```
+
+See that those 1,092 are just 0.24% of the 455,158 total individuals observed--so we will go ahead and filter these out.
+
+```{r filter nonpositive biomass}
+mcr_fish_2 %>% 
+  filter(Biomass != -1) -> mcr_fish_3
+```
+
+# Taxa cleaning
+
+Also want to clean up the taxonomy so that each taxon is unique. Use the table where I assigned taxonomic designations manually. First make sure we have all the taxa accounted for:
+
+```{r}
+mcr_fish_3 %>%
+  left_join(mcr_taxa) %>% 
+  filter(is.na(Taxonomy_updated)) %>% 
+  select(Taxonomy) %>% 
+  unique() # all accounted for (no NA's)
+```
+
+See how many we lose if we filter out non-specific taxonomy:
+
+```{r}
+mcr_fish_3 %>%
+  left_join(mcr_taxa) %>% 
+  group_by(id_confidence) %>% 
+  summarize(abundance = sum(Count)) 
+```
+
+See that we lose less than 0.05% of observations if we filter out the vague IDs. Let's go ahead and do that (see Andy's notes below). We'll also update the taxonomy to deal with cf species/etc.
+
+Andy Brooks notes that: 
+- There is a unique description for every Blennie spp 6, etc. (is unique)
+- Unknown Scaridae does not have a unique description
+- They're such small numbers, probably fine to just exclude them; the most conservative thing is to just chuck them > also no way to do biomass
+- Also FYI biomass is way more stable than abundance
+- Andy also thinks it's fine to count the "cf" species as the species they are recorded as; sometimes these are for spp that are not even described (but reeeeally similar - 
+length/weight probably the same; trophic is also probably the same); these differences are more regional 
+
+```{r filter vague taxonomy}
+mcr_fish_3 %>%
+  left_join(mcr_taxa) %>% 
+  # only keep well identified taxa
+  filter(id_confidence == 1) %>% 
+  # update taxonomy if needed
+  select(-Taxonomy) %>% 
+  rename(Taxonomy = Taxonomy_updated) -> mcr_fish_4
+```
+
+**Notes on more wide-ranging taxa**:
+
+If we want to filter out sharks, could filter subdivision != "Selachii"
+
+Other potentially wide ranging taxa:
+- Caranx genus
+- Gnathanodon genus (trevally)
+- Carangoides ferdau (trevally)
+- Carangoides orthogrammus (trevally)
+- Tuna (subfamily Scombrinae, Tribe Thunnini)
+- Barracuda (Sphyraena qenie, Sphyraena barracuda)
+- Remoras? (e.g., Echeneis naucrates)
+- Rays? (e.g., Pateobatis fai, Aetobatus ocellatus)
+- Hound needlefish? (Tylosurus crocodilus)
+- Jobfish? (Aprion virescens)
+- Milkfish? (Chanos chanos)
+- Batfish? (Platax orbicularis)
+- Queenfish? (Scomberoides lysan)
+- Flyingfish? (Cypselurus simus)
+- Others! Stopped here (in order of most abundant fish)
+
+# QA/QC
+
+Make sure all transects/swaths accounted for each year:
+
+```{r}
+mcr_fish_4 %>% 
+  group_by(Year, Site, Habitat, Transect, Swath) %>% 
+  summarize(n = n()) %>% 
+  group_by(Year, Site) %>% 
+  summarize(n = n()) %>% view()
+```
+
+Look at temporal coverage:
+
+```{r}
+mcr_fish_4 %>% 
+  group_by(Year, Site, Habitat, Transect, Swath) %>% 
+  summarize(n = n()) %>% 
+  group_by(Year, Site) %>% 
+  summarize(n = n()) %>% 
+  group_by(Year) %>% 
+  summarize(n_site = n()) %>% view()
+```
+
+See that all 6 sites were done in completion each year with no gaps
+
+# Adjust for swaths
+
+```{r}
+mcr_fish_4 %>% 
+  # get biomass for 5 m swath
+  mutate(biomass_g_per_5x50_m2 = case_when(Swath == 1 ~ Biomass*5, 
+                                           Swath == 5 ~ Biomass,
+                                           TRUE ~ -9999))
+```
+
+
+# Format
+
+Make a nicer format for the working group
