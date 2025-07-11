@@ -30,10 +30,10 @@ Data downloaded from: https://portal.edirepository.org/nis/mapbrowse?packageid=k
 
 ```{r load data}
 # raw data from EDI
-sbc_fish_1 <- read_csv(here("data_raw", "Annual_All_Species_Biomass_at_transect_20240823.csv"))
+sbc_fish_1 <- read_csv(here("CSVs", "data_raw", "Annual_All_Species_Biomass_at_transect_20240823.csv"))
 
 # taxa table where I cleaned up fish taxonomy and taxonomic resolution
-sbc_taxa <- read_csv(here("taxa_tables", "sbc_taxa_annotated.csv"))
+sbc_taxa <- read_csv(here("CSVs", "taxa_tables", "sbc_taxa_annotated.csv"))
 ```
 
 **Some considerations wrt these data:**
@@ -94,7 +94,7 @@ sbc_fish_1 %>%
   filter(WM_GM2 < 0) %>% dim() # 580 rows have NAs for wet mass
 ```
 
-See that all NA's are from 2004 and 2005. Perhaps then we start in 2006?
+See that all NA's are from 2004 and 2005. Perhaps then we start in 2006? -9999 are TRUE NA's in this dataset (not zero)
 
 ```{r filter out years before 2006}
 sbc_fish_1 %>% 
@@ -162,5 +162,5 @@ Looks good.
 # Write CSV
 
 ```{r}
-write_csv(sbc_fish_3, here("data_cleaned", "sbc_fish_biomass.csv"))
+write_csv(sbc_fish_3, here("CSVs", "data_cleaned", "sbc_fish_biomass.csv"))
 ```

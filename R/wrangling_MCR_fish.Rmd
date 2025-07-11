@@ -30,10 +30,10 @@ Data downloaded from: https://portal.edirepository.org/nis/mapbrowse?scope=knb-l
 
 ```{r load data}
 # raw fish counts
-mcr_fish_1 <- read_csv(here("data_raw", "MCR_LTER_Annual_Fish_Survey_20250324.csv")) 
+mcr_fish_1 <- read_csv(here("CSVs", "data_raw", "MCR_LTER_Annual_Fish_Survey_20250324.csv")) 
 
 # taxa table where I cleaned up fish taxonomy and taxonomic resolution
-mcr_taxa <- read_csv(here("taxa_tables", "mcr_fish_taxa_annotated.csv"))
+mcr_taxa <- read_csv(here("CSVs", "taxa_tables", "mcr_fish_taxa_annotated.csv"))
 ```
 
 **Some considerations wrt these data:**
@@ -155,6 +155,19 @@ Other potentially wide ranging taxa:
 - Flyingfish? (Cypselurus simus)
 - Others! Stopped here (in order of most abundant fish)
 
+# Make taxonomy list to save separately
+
+```{r}
+mcr_fish_4 %>% 
+  group_by(Taxonomy, taxon_resolution, Coarse_Trophic, Fine_Trophic) %>% 
+  summarize(N_rows = n()) %>% 
+  # get rid of bad duplicate
+  filter(!(Taxonomy == "Abudefduf septemfasciatus" & Coarse_Trophic == "na")) %>% 
+  write_csv(here("CSVs", "taxa_tables", "mcr_fish_trophic_designations.csv"))
+  
+```
+
+
 # QA/QC
 
 Make sure all transects/swaths accounted for each year:
@@ -225,6 +238,6 @@ Looks good.
 # Write CSV
 
 ```{r}
-write_csv(mcr_fish_6, here("data_cleaned", "mcr_fish_biomass_5x50m2.csv"))
+write_csv(mcr_fish_6, here("CSVs", "data_cleaned", "mcr_fish_biomass_5x50m2.csv"))
 ```
 
