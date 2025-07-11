@@ -3,6 +3,8 @@ title: "Use fishbase R package to assign trophic levels"
 author: "Julianna Renzi"
 date: "2025-07-11"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -18,10 +20,109 @@ if (!require("librarian")) install.packages("librarian")
 
 # Load other necessary libraries
 librarian::shelf(here, # relative file paths
-                 tidyverse # data wrangling
+                 tidyverse, # data wrangling
+                 ropensci/rfishbase # fishbase package for getting trophic levels
 )
 ```
 
 # Bring in data
 
 These CSVs were generated from the MCR & SBC wrangling scripts
+
+```{r}
+mcr_taxa <- read_csv(here("CSVs", "taxa_tables", "mcr_fish_trophic_designations_annotated.csv")) %>% 
+  # make a Taxonomy column for Fishbase
+  mutate(Taxonomy_fishbase = case_when(is.na(Taxonomy_2) ~ Taxonomy, 
+                                       TRUE ~ Taxonomy_2)) # Taxonomy_2 is for taxa that need different search names (e.g., updates to taxonomy, new spp)
+
+sbc_taxa <- read_csv(here("CSVs", "taxa_tables", "sbc_taxa_annotated.csv")) %>% 
+  filter(taxa_type == "FISH") %>% 
+  rename(Taxonomy_fishbase = SCIENTIFIC_NAME_updated)
+```
+
+# MCR 
+
+## Get fishbase information
+
+First general species-level information
+
+```{r}
+fb_tbl("species") %>% 
+  mutate(Taxonomy_fishbase = paste(Genus, Species)) %>%
+  filter(Taxonomy_fishbase %in% mcr_taxa$Taxonomy_fishbase) %>% 
+  select(SpecCode, Taxonomy_fishbase, Genus, Species, BodyShapeI, DemersPelag, DepthRangeShallow, DepthRangeDeep, Vulnerability, Length, LTypeMaxM, PD50) -> mcr_taxa_2
+```
+
+Then join that information with trophic level information
+
+```{r}
+ecology(mcr_taxa$Taxonomy_fishbase,
+        # FoodTroph = Trophic level (based on food items)
+        # DietTroph = trophic level based on diet studies
+        fields = c("SpecCode", "FoodTroph", "FoodSeTroph",
+                   "DietTroph", "DietSeTroph")) %>% 
+  full_join(mcr_taxa_2) %>% 
+  # and join with full list so we see what's missing
+  full_join(mcr_taxa) -> mcr_taxa_3
+```
+
+NOTE: 
+
+- From GitHub comment: "Rainer Froese from the FishBase team gave this advice: As for content, FoodTroph gives a MonteCarlo estimate of trophic level based on known food items. *DietTroph* uses the mean or median of trophic levels derived from actual diet composition studies. While in theory troph from diet should be more reliable, many diet studies are incomplete or biased and I often find *FoodTroph* more reasonable. Remember that FishBase only reflects what it has captured from the published record, and there is a lot of garbage out there If you do a serious study about a single species, use the FB refs as a start, search for additional refs and do your own careful analysis only using "good" studies. Don't forget to send copies of new refs to FishBase, as well as indications of "bad" refs that FishBase should mark as such." (https://github.com/ropensci/rfishbase/issues/199) 
+
+- AI overview says: In FishBase, "FoodTroph" refers to an estimated trophic level based on the types of food items a fish consumes, while "DietTroph" refers to a trophic level calculated from the actual proportions of different food items in a fish's diet. Essentially, FoodTroph is a more general estimate based on known food items, while DietTroph is a more precise calculation based on quantitative diet data. FoodTroph is like saying, "This fish eats fish, crustaceans, and insects, so its trophic level is probably around 3.5." DietTroph is like saying, "This fish eats 60% fish, 30% crustaceans, and 10% insects, so its trophic level is precisely calculated as 3.7.
+
+## Estimate missing trophic levels to nearest relative
+
+```{r}
+estimate(mcr_taxa$Taxonomy_fishbase, fields = c("SpecCode", "Troph")) %>% 
+  rename("Estimated_TrophL" = "Troph") %>% 
+  # bin trophic levels
+  mutate(TrophL_bin_estimate = case_when(Estimated_TrophL >= 2.0 & Estimated_TrophL < 2.5 ~ "2-2.49",
+                            Estimated_TrophL >= 2.5 & Estimated_TrophL < 3.0 ~ "2.5-2.99",
+                            Estimated_TrophL >= 3.0 & Estimated_TrophL < 3.5 ~ "3-3.49",
+                            Estimated_TrophL >= 3.5 & Estimated_TrophL < 4.0 ~ "3.5-3.99",
+                            Estimated_TrophL >= 4.0 & Estimated_TrophL <= 4.5 ~ "4-4.50",
+                            TRUE ~ "CHECK"
+                            )) %>% 
+  # join back with the full data frame
+  full_join(mcr_taxa_3) %>% 
+  select(Taxonomy, Taxonomy_fishbase, Taxonomy_notes, taxon_resolution, SpecCode, Coarse_Trophic, Fine_Trophic, 
+         TrophL_bin_estimate, Estimated_TrophL, FoodTroph, FoodSeTroph, DietTroph, DietSeTroph, BodyShapeI, DemersPelag, 
+         DepthRangeShallow, DepthRangeDeep, Vulnerability, Length, LTypeMaxM, PD50) -> mcr_taxa_4
+```
+
+From GitHub: "estimate() will first attempt to give me the DietTroph value if it is available. If the DietTroph value is not available, it will provide the FoodTroph value, and if that is not available, estimate() will give me a value estimated from species that have similar feeding habits. I cannot find the place in the fishbase manual or in https://rdrr.io/cran/rfishbase/man/estimate.html that indicates that."
+
+## Write MCR taxonomy CSV
+
+```{r}
+write_csv(mcr_taxa_4, here("CSVs", "taxa_tables", "mcr_fish_fishbase.csv"))
+```
+
+# SBC
+
+## Get fishbase information
+
+First general species-level information
+
+```{r}
+fb_tbl("species") %>% 
+  mutate(Taxonomy_fishbase = paste(Genus, Species)) %>%
+  filter(Taxonomy_fishbase %in% sbc_taxa$Taxonomy_fishbase) %>% 
+  select(SpecCode, Taxonomy_fishbase, Genus, Species, BodyShapeI, DemersPelag, DepthRangeShallow, DepthRangeDeep, Vulnerability, Length, LTypeMaxM, PD50) -> sbc_taxa_2
+```
+
+Then join that information with trophic level information
+
+```{r}
+ecology(mcr_taxa$Taxonomy_fishbase,
+        # FoodTroph = Trophic level (based on food items)
+        # DietTroph = trophic level based on diet studies
+        fields = c("SpecCode", "FoodTroph", "FoodSeTroph",
+                   "DietTroph", "DietSeTroph")) %>% 
+  full_join(mcr_taxa_2) %>% 
+  # and join with full list so we see what's missing
+  full_join(mcr_taxa) -> mcr_taxa_3
+```
+
