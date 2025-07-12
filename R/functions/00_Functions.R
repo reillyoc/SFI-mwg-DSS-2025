@@ -322,3 +322,10 @@ count_to_density <- function(N, C_D, C_P){
 } 
 
 
+CalcZeroInfGeomDens = function(x){
+  prob_obs = sum(x > 0)/length(x)
+  geom_mean_dens = ifelse(prob_obs > 0, exp(mean(log(x[x > 0]))), 0)
+  return(geom_mean_dens * prob_obs)
+}
+
+
