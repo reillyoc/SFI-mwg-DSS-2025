@@ -1,0 +1,32 @@
+---
+title: "Analysis: using comstab with MCR fish data"
+author: "Julianna Renzi"
+date: "2025-07-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+df_avian <- read.csv("../avian-stability/data/invert_omni_passerines_time_series.csv", header = T) %>%
+  select(-X) %>%
+  rename(Year = year) %>%
+  filter(! Year > 2019)
+
+df_avian_years <- df_avian %>%
+  select(- Year)
+
+part_zhao_avian <- zhao_decomp_w(df_avian)
+
+str(df_avian)
+
+#Apply Partition for 
+part_avian <- rollapply(data = df_avian, width = 10, by = 1, FUN = partitionR_window, by.column = FALSE, align = "left")
+
+df_part_avian <- as.data.frame(part_avian)
+df_part_avian <- df_part_avian %>%
+  mutate(across(-warnings, as.numeric))
+
+#Look at all of the power law relationships for any window size
+# plot_TPL(df_avian, window_size = 15, ny = 1, form = "vari")

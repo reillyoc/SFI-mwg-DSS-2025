@@ -159,5 +159,5 @@ estimate(sbc_taxa$Taxonomy_fishbase, fields = c("SpecCode", "Troph")) %>%
 ## Write MCR taxonomy CSV
 
 ```{r}
-write_csv(sbc_taxa_4, here("CSVs", "taxa_tables", "mcr_fish_fishbase.csv"))
+write_csv(sbc_taxa_4, here("CSVs", "taxa_tables", "sbc_fish_fishbase.csv"))
 ```
