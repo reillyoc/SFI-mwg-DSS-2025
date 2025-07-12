@@ -82,14 +82,19 @@ estimate(mcr_taxa$Taxonomy_fishbase, fields = c("SpecCode", "Troph")) %>%
                             Estimated_TrophL >= 2.5 & Estimated_TrophL < 3.0 ~ "2.5-2.99",
                             Estimated_TrophL >= 3.0 & Estimated_TrophL < 3.5 ~ "3-3.49",
                             Estimated_TrophL >= 3.5 & Estimated_TrophL < 4.0 ~ "3.5-3.99",
-                            Estimated_TrophL >= 4.0 & Estimated_TrophL <= 4.5 ~ "4-4.50",
+                            Estimated_TrophL >= 4.0 & Estimated_TrophL < 4.5 ~ "4-4.49",
+                            Estimated_TrophL >= 4.5 & Estimated_TrophL < 5.0 ~ "4.5-5.99",
                             TRUE ~ "CHECK"
                             )) %>% 
   # join back with the full data frame
   full_join(mcr_taxa_3) %>% 
   select(Taxonomy, Taxonomy_fishbase, Taxonomy_notes, taxon_resolution, SpecCode, Coarse_Trophic, Fine_Trophic, 
          TrophL_bin_estimate, Estimated_TrophL, FoodTroph, FoodSeTroph, DietTroph, DietSeTroph, BodyShapeI, DemersPelag, 
-         DepthRangeShallow, DepthRangeDeep, Vulnerability, Length, LTypeMaxM, PD50) -> mcr_taxa_4
+         DepthRangeShallow, DepthRangeDeep, Vulnerability, Length, LTypeMaxM, PD50) %>% 
+  # make naming more consistent (although not in my style)
+  rename(TaxonomyFB = Taxonomy_fishbase, TaxonomyNotes = Taxonomy_notes, TaxonResolution = taxon_resolution, 
+         CoarseTrophicMCR = Coarse_Trophic, FineTrophicMCR = Fine_Trophic,
+         TrophicBinEst = TrophL_bin_estimate, EstTroph = Estimated_TrophL) -> mcr_taxa_4
 ```
 
 From GitHub: "estimate() will first attempt to give me the DietTroph value if it is available. If the DietTroph value is not available, it will provide the FoodTroph value, and if that is not available, estimate() will give me a value estimated from species that have similar feeding habits. I cannot find the place in the fishbase manual or in https://rdrr.io/cran/rfishbase/man/estimate.html that indicates that."
@@ -116,13 +121,43 @@ fb_tbl("species") %>%
 Then join that information with trophic level information
 
 ```{r}
-ecology(mcr_taxa$Taxonomy_fishbase,
+ecology(sbc_taxa$Taxonomy_fishbase,
         # FoodTroph = Trophic level (based on food items)
         # DietTroph = trophic level based on diet studies
         fields = c("SpecCode", "FoodTroph", "FoodSeTroph",
                    "DietTroph", "DietSeTroph")) %>% 
-  full_join(mcr_taxa_2) %>% 
+  full_join(sbc_taxa_2) %>% 
   # and join with full list so we see what's missing
-  full_join(mcr_taxa) -> mcr_taxa_3
+  full_join(sbc_taxa) -> sbc_taxa_3
 ```
 
+## Estimate missing trophic levels to nearest relative
+
+```{r}
+estimate(sbc_taxa$Taxonomy_fishbase, fields = c("SpecCode", "Troph")) %>% 
+  rename("Estimated_TrophL" = "Troph") %>% 
+  # bin trophic levels
+  mutate(TrophL_bin_estimate = case_when(Estimated_TrophL >= 2.0 & Estimated_TrophL < 2.5 ~ "2-2.49",
+                            Estimated_TrophL >= 2.5 & Estimated_TrophL < 3.0 ~ "2.5-2.99",
+                            Estimated_TrophL >= 3.0 & Estimated_TrophL < 3.5 ~ "3-3.49",
+                            Estimated_TrophL >= 3.5 & Estimated_TrophL < 4.0 ~ "3.5-3.99",
+                            Estimated_TrophL >= 4.0 & Estimated_TrophL < 4.5 ~ "4-4.49",
+                            Estimated_TrophL >= 4.5 & Estimated_TrophL < 5.0 ~ "4.5-5.99",
+                            TRUE ~ "CHECK"
+                            )) %>% 
+  # join back with the full data frame
+  full_join(sbc_taxa_3) %>% 
+  select(Taxonomy_fishbase, taxon_resolution, SpecCode, COMMON_NAME, feeding_type, feeding_type_source, notes,
+         TrophL_bin_estimate, Estimated_TrophL, FoodTroph, FoodSeTroph, DietTroph, DietSeTroph, BodyShapeI, DemersPelag, 
+         DepthRangeShallow, DepthRangeDeep, Vulnerability, Length, LTypeMaxM, PD50) %>% 
+  # make naming more consistent (although not in my style)
+  rename(TaxonomyFB = Taxonomy_fishbase, TaxonResolution = taxon_resolution, CommonName = COMMON_NAME, 
+         FeedingTypeJR = feeding_type, FeedingTypeSource = feeding_type_source, 
+         FeedingNotesJR = notes, TrophicBinEst = TrophL_bin_estimate, EstTroph = Estimated_TrophL) -> sbc_taxa_4
+```
+
+## Write MCR taxonomy CSV
+
+```{r}
+write_csv(sbc_taxa_4, here("CSVs", "taxa_tables", "mcr_fish_fishbase.csv"))
+```
